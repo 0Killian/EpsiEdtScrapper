@@ -82,6 +82,8 @@ func addCourse(courses []Course, firstname string, lastname string, date string)
 		if c == nil {
 			continue
 		}
+
+		fmt.Println(c)
 		for _, course := range c {
 			courses = append(courses, course)
 		}
@@ -101,8 +103,17 @@ func contains(dup []Course, course Course) bool {
 
 func scrapWeek(firstname string, lastname string, date string) []Course {
 	var courses []Course = []Course{}
-	requestUrl := fmt.Sprintf("https://edtmobiliteng.wigorservices.net/WebPsDyn.aspx?action=posEDTBEECOME&serverid=i&Tel=%s.%s&date=%s", firstname, lastname, date)
-	res, err := http.Get(requestUrl)
+	requestUrl := fmt.Sprintf(os.Getenv("URL"), firstname, lastname, date)
+	req, err := http.NewRequest("GET", requestUrl, nil)
+
+	if err != nil {
+		fmt.Printf("error making http request: %s\n", err)
+		return nil
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
+
+	res, err := http.DefaultClient.Do(req)
 
 	if err != nil {
 		fmt.Printf("error making http request: %s\n", err)
@@ -119,21 +130,18 @@ func scrapWeek(firstname string, lastname string, date string) []Course {
 	htmlRoot, err := html.Parse(res.Body)
 
 	page := renderNode(htmlRoot)
-
 	if strings.Contains(page, "Erreur") {
 		fmt.Printf("error scraping week (%s): %s\n", requestUrl, page)
 		return nil
 	}
 
 	daySel, err := css.Parse("div.Jour")
-
 	if err != nil {
 		fmt.Printf("error parsing css: %s\n", err)
 		return nil
 	}
 
 	dayNodes := daySel.Select(htmlRoot)
-
 	coursesSel, err := css.Parse("div.Case")
 	if err != nil {
 		fmt.Printf("error parsing css: %s\n", err)
@@ -141,7 +149,6 @@ func scrapWeek(firstname string, lastname string, date string) []Course {
 	}
 
 	coursesNodes := coursesSel.Select(htmlRoot)
-
 	tcjourSel, err := css.Parse(".TCJour")
 	if err != nil {
 		fmt.Printf("error parsing css: %s\n", err)
@@ -177,7 +184,7 @@ func scrapWeek(firstname string, lastname string, date string) []Course {
 				return nil
 			}
 
-			elemSel, err := css.Parse(".innerCase > .BackGroundCase > table > tbody > tr > td.TChdeb")
+			elemSel, err := css.Parse(".TCase > tbody > tr > td.TChdeb")
 			if err != nil {
 				fmt.Printf("error parsing css: %s\n", err)
 				return nil
@@ -188,29 +195,33 @@ func scrapWeek(firstname string, lastname string, date string) []Course {
 			start := duration.FirstChild.Data[:5]
 			end := duration.FirstChild.Data[8:13]
 
-			subjectSel, err := css.Parse(".innerCase > .BackGroundCase > table > tbody > tr > td.TCase")
+			subjectSel, err := css.Parse(".TCase > tbody > tr > td.TCase")
 			if err != nil {
 				fmt.Printf("error parsing css: %s\n", err)
 				return nil
 			}
 
-			professorSel, err := css.Parse(".innerCase > .BackGroundCase > table > tbody > tr > td.TCProf")
+			professorSel, err := css.Parse(".TCase > tbody > tr > td.TCProf")
 			if err != nil {
 				fmt.Printf("error parsing css: %s\n", err)
 				return nil
 			}
 
-			roomSel, err := css.Parse(".innerCase > .BackGroundCase > table > tbody > tr > td.TCSalle")
+			roomSel, err := css.Parse(".TCase > tbody > tr > td.TCSalle")
 
-			subject := renderNode(subjectSel.Select(courseNode)[0].FirstChild.NextSibling.NextSibling)
-			professor := renderNode(professorSel.Select(courseNode)[0])
+			subject := renderNode(subjectSel.Select(courseNode)[0].FirstChild)
+			professor := ""
+			for child := professorSel.Select(courseNode)[0].FirstChild; child != nil; child = child.NextSibling {
+				professor += renderNode(child)
+			}
+
 			bts := strings.Contains(professor, "BTS")
 
 			professorLines := strings.Split(professor, "<br/>")
 
-			professor = strings.Split(professorLines[0], "</span>")[1]
-			category := strings.Split(professorLines[1], "</td>")[0]
-			room := strings.Replace(roomSel.Select(courseNode)[0].FirstChild.Data, "Salle:", "", 1)
+			professor = professorLines[1]
+			category := professorLines[2]
+			room := strings.Replace(renderNode(roomSel.Select(courseNode)[0].FirstChild), "Salle:", "", 1)
 			remote := strings.Contains(strings.ToLower(room), "distanciel")
 
 			var cat string
@@ -325,29 +336,29 @@ func hasClass(node *html.Node, class string) bool {
 
 func getMonth(date string) string {
 	switch strings.ToLower(date) {
-	case "janvier":
+	case "jan":
 		return "01"
-	case "février":
+	case "feb":
 		return "02"
-	case "mars":
+	case "mar":
 		return "03"
-	case "avril":
+	case "apr":
 		return "04"
-	case "mai":
+	case "may":
 		return "05"
-	case "juin":
+	case "jun":
 		return "06"
-	case "juillet":
+	case "jul":
 		return "07"
-	case "août":
+	case "aug":
 		return "08"
-	case "septembre":
+	case "sep":
 		return "09"
-	case "octobre":
+	case "oct":
 		return "10"
-	case "novembre":
+	case "nov":
 		return "11"
-	case "décembre":
+	case "dec":
 		return "12"
 	default:
 		return "00"
